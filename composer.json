@@ -1,0 +1,21 @@
+{
+    "name": "bera/bera-router",
+    "description": "A simple php router",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "joykumarbera",
+            "email": "joykumarbera@gmail.com"
+        }
+    ],
+    "require": {
+        "symfony/http-foundation": "^6.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "bera\\router\\" : "src",
+            "app\\": "app"
+        }
+    }
+}
