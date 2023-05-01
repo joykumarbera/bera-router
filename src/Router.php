@@ -4,6 +4,8 @@ namespace bera\router;
 
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use bera\router\exceptions\RouteClassNotFoundException;
+use bera\router\exceptions\RouteHandlerMethodException;
 
 /**
  * @author Joy Kumar Bera<joykumarbera@gmail.com>
@@ -25,31 +27,68 @@ class Router
      */
     private $middleware_namespace;
 
+    /**
+     * @var mixed $not_found404_handler
+     */
+    private $not_found404_handler;
+
+    /**
+     * @var mixed $all_option_request_handler
+     */
+    private $all_option_request_handler;
+
+    /**
+     * Constructor
+     * 
+     * @param string $controller_namespace
+     * @param string $middleware_namespace
+     */
     public function __construct(string $controller_namespace = null, string $middleware_namespace = null)
     {
         $this->routes = [];
         $this->controller_namespace = $controller_namespace ?? '\\app\\controllers\\';
         $this->middleware_namespace = $middleware_namespace ?? '\\app\\middlewares\\';
+        $this->not_found404_handler = null;
     }
 
     /**
-     * Add a get endpoint
+     * Set 404 route handler
+     * 
+     * @param mixed $callback
+     */
+    public function set404Route($callback) 
+    {
+        $this->not_found404_handler = $callback;
+    }
+
+    /**
+     * Set all OPTION request handler method
+     * 
+     * @param mixed $callback
+     */
+    public function setOptionRequestHandlerRoute($callback)
+    {
+        $this->all_option_request_handler = $callback;
+    }
+
+    /**
+     * Add a GET request endpoint
      * 
      * @param string $endpoint
      * @param callback $callback
      */
-    public function get($endpoint, $callback, $middlewares = [])
+    public function get(string $endpoint, $callback, array $middlewares = [])
     {
         $this->addRequset('GET', $endpoint, $callback, $middlewares);
     }
 
     /**
-     * Add a post endpoint
+     * Add a POST request endpoint
      * 
      * @param string $endpoint
      * @param callback $callback
      */
-    public function post($endpoint, $callback, $middlewares = [])
+    public function post(string $endpoint, $callback, array $middlewares = [])
     {
         $this->addRequset('POST', $endpoint, $callback, $middlewares);
     }
@@ -62,7 +101,7 @@ class Router
      * @param callback $callback
      * @param array $middlewares
      */
-    private function addRequset($type, $endpoint, $callback, $middlewares)
+    private function addRequset(string $type, string $endpoint, $callback, array $middlewares)
     {
         $route_handler = [];
         $route_handler['callback'] = $callback;
@@ -80,7 +119,7 @@ class Router
             }
         }
         
-        $replacement = '([\w\-_]+)';
+        $replacement = '([\w\-_]+)'; // allow all slug for now
         $url_params = [];
         $decorated_string = preg_replace_callback(
             '/\{(.*?)\}/',
@@ -92,21 +131,16 @@ class Router
         );
 
         $final_endpoint = '#^' . $decorated_string . '$#';
-        $route_handler['params'] = $url_params;  
+        $route_handler['params'] = $url_params;
         
         $this->routes[$final_endpoint] = $route_handler;
     }
 
     /**
-     * Get available routes
+     * Get current request method and route
      * 
      * @return array
      */
-    public function getRoutes()
-    {
-        return $this->routes;
-    }
-    
     private function getRequestMethodAndRoute()
     {
         $method = $_SERVER['REQUEST_METHOD'];
@@ -124,7 +158,47 @@ class Router
     }
 
     /**
-     * Start the router
+     * Handle option request
+     * 
+     * @param Request $request
+     * @param Response $response
+     */
+    public function handleOptionRequest($request, $response)
+    {
+        if( !is_null($this->all_option_request_handler) && is_callable($this->all_option_request_handler) ) {
+            call_user_func($this->all_option_request_handler);
+        } else if(!is_null($this->all_option_request_handler) && is_string($this->all_option_request_handler) && strpos($this->all_option_request_handler, '@') !== false ) {
+            list($className, $actionName) = explode('@', $this->all_option_request_handler);
+            $class = $this->controller_namespace . $className;
+            $classInstance = new $class();
+            call_user_func([$classInstance, $actionName]);
+        } else {
+            $response->headers->set('Access-Control-Allow-Origin', '*');
+            $response->headers->set('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+            return $response->send();
+        }
+    }
+
+    /**
+     * Handle 404 routes
+     */
+    private function handle404()
+    {
+        if( !is_null($this->not_found404_handler) && is_callable($this->not_found404_handler) ) {
+            call_user_func($this->not_found404_handler);
+        } else if(!is_null($this->not_found404_handler) && is_string($this->not_found404_handler) && strpos($this->not_found404_handler, '@') !== false ) {
+            list($className, $actionName) = explode('@', $this->not_found404_handler);
+            $class = $this->controller_namespace . $className;
+            $classInstance = new $class();
+            call_user_func([$classInstance, $actionName]);
+        } else {
+            http_response_code(404);
+            die("No route found");
+        }
+    }
+
+    /**
+     * Dispatch the router
      */
     public function dispatch()
     {
@@ -146,25 +220,39 @@ class Router
             }
         }
 
-        if($callback == '') {
-            http_response_code(404);
-            die("No route found");
-        }
-
-       
-        list($className, $actionName) = explode('@', $callback);
-
-
-        $class = $this->controller_namespace . $className;
-
-        $classInstance = new $class();
-
         $request = Request::createFromGlobals();
         $response = new Response(
-            'Content',
+            '',
             Response::HTTP_OK,
             ['content-type' => 'text/html']
         );
+
+        if($method == 'OPTIONS') {
+            $this->handleOptionRequest($request, $response);
+            return;
+        }
+
+        if($callback == '') {
+            $this->handle404();
+        }
+
+        list($className, $actionName) = explode('@', $callback);
+
+        $class = $this->controller_namespace . $className;
+
+        if(!class_exists($class)) {
+            throw new RouteClassNotFoundException(
+                sprintf("the class %s not defined", $class)
+            );
+        }
+
+        $classInstance = new $class();
+
+        if( !method_exists($classInstance, $actionName) ) {
+            throw new RouteHandlerMethodException(
+                sprintf("no action method found in %s", get_class($classInstance))
+            );
+        }
 
         $before_middleware_status = true;
         if(isset($this->routes[$endpoint]['before_middlewares'])) {
@@ -179,7 +267,7 @@ class Router
         if($before_middleware_status) {
             // hit the acctual controller
             if(!empty($url_params_values)) {
-                call_user_func_array([$classInstance, $actionName], array_values($url_params_values));
+                call_user_func_array([$classInstance, $actionName], array_merge(array_values($url_params_values), [$request, $response]) );
             } else {
                 call_user_func_array([$classInstance, $actionName], [
                     $request, $response
@@ -217,7 +305,7 @@ class Router
             $middlewareInstance = new $middlewareClass();
 
             if(!method_exists($middlewareInstance, 'handle')) {
-                throw new \Exception(
+                throw new RouteHandlerMethodException(
                     sprintf("no handle method found in %s", get_class($middlewareInstance))
                 );
             }
