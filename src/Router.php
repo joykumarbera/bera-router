@@ -198,6 +198,16 @@ class Router
     }
 
     /**
+     * Get all routes
+     * 
+     * @return array
+     */
+    public function getRoutes()
+    {
+        return $this->routes;
+    }
+
+    /**
      * Dispatch the router
      */
     public function dispatch()
@@ -206,16 +216,13 @@ class Router
 
         $url_params_values = [];
         $callback = '';
+        $matched_route = '';
         foreach($this->routes as $route => $route_info) {
             if(preg_match($route, $endpoint, $matches) && $route_info['type'] == $method) {
-                
-                foreach($route_info['params'] as $param) {
-                    if( array_key_exists($param, $matches) ) {
-                        $url_params_values[$param] = $matches[$param];
-                    }
-                }
-
+                array_shift($matches);
+                $url_params_values = $matches;
                 $callback = $route_info['callback'];
+                $matched_route = $route;
                 break;
             }
         }
@@ -234,54 +241,69 @@ class Router
 
         if($callback == '') {
             $this->handle404();
-        }
-
-        list($className, $actionName) = explode('@', $callback);
-
-        $class = $this->controller_namespace . $className;
-
-        if(!class_exists($class)) {
-            throw new RouteClassNotFoundException(
-                sprintf("the class %s not defined", $class)
-            );
-        }
-
-        $classInstance = new $class();
-
-        if( !method_exists($classInstance, $actionName) ) {
-            throw new RouteHandlerMethodException(
-                sprintf("no action method found in %s", get_class($classInstance))
-            );
+            return;
         }
 
         $before_middleware_status = true;
-        if(isset($this->routes[$endpoint]['before_middlewares'])) {
+
+        if(isset($this->routes[$matched_route]['before_middlewares'])) {
             $before_middleware_status = $this->applyMiddlewares(
                 'before',
-                $endpoint,
+                $matched_route,
                 $request,
                 $response
             );
         }
 
         if($before_middleware_status) {
-            // hit the acctual controller
-            if(!empty($url_params_values)) {
-                call_user_func_array([$classInstance, $actionName], array_merge(array_values($url_params_values), [$request, $response]) );
-            } else {
-                call_user_func_array([$classInstance, $actionName], [
-                    $request, $response
-                ]);
-            }
+            $this->fireAction($callback, $url_params_values, $request, $response);
         }
         
-        if(isset($this->routes[$endpoint]['after_middlewares'])) {
+        if(isset($this->routes[$matched_route]['after_middlewares'])) {
             $this->applyMiddlewares(
                 'after',
-                $endpoint,
+                $matched_route,
                 $request,
                 $response
             );
+        }
+    }
+
+    /**
+     * Call actual action
+     * 
+     * @param string $callback
+     * @param Request $request
+     * @param Response $response
+     */
+    private function fireAction($callback, $url_params_values, $request, $response) 
+    {
+        $final_params = !empty($url_params_values) ?
+            array_merge(array_values($url_params_values), [$request, $response])
+            :
+            [$request, $response];
+
+        if(is_callable($callback)) {
+            call_user_func_array($callback, $final_params);
+        } else {
+            list($className, $actionName) = explode('@', $callback);
+            $class = $this->controller_namespace . $className;
+    
+            if(!class_exists($class)) {
+                throw new RouteClassNotFoundException(
+                    sprintf("the class %s not defined", $class)
+                );
+            }
+    
+            $classInstance = new $class();
+    
+            if( !method_exists($classInstance, $actionName) ) {
+                throw new RouteHandlerMethodException(
+                    sprintf("no action method found in %s", get_class($classInstance))
+                );
+            }
+
+            call_user_func_array([$classInstance, $actionName], $final_params);
         }
     }
 
