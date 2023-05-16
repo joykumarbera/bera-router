@@ -26,21 +26,28 @@ Install by using composer
 
 Quick start
 
+Default controller and middleware namespace is set to ```php \app\controllers ``` and ```php \app\middlewares ```
+
 ```php
 require_once __DIR__  . '/vendor/autoload.php';
 
 $router = new \bera\router\Router();
 
 $router->get('/', function($id) {
-    echo 'wellcome to index page';
+    echo 'welcome to index page';
 });
 
 $router->post('/post/create', function(\Symfony\Component\HttpFoundation\Request $request, \Symfony\Component\HttpFoundation\Respone $response) {
     // add new post here
 });
+
+$router->dispatch();
 ```
 
 Using middleware
+
+Setup up the controller and middleware namespace
+
 ```php
 
 $router = new \bera\router\Router('\\app\\controllers\\', '\\app\\middlewares\\');
@@ -72,3 +79,9 @@ class TestController
 }
 ```
 
+Setup 404 page route handler
+
+```php
+$router = new \bera\router\Router();
+$router->set404Route('SomeController@handle404');
+```
