@@ -12,7 +12,6 @@ A simple php router
 - Simple Interface
 - Support for GET, POST, OPTIONS methods
 - Custom 404 page support
-- Custom OPTIONS method handling support
 
 ## Installation
 
@@ -22,11 +21,11 @@ Install by using composer
   composer require bera/bera-router
 ```
     
-## Usage/Examples
+## Usage
 
-Quick start
+### Quick start
 
-Default controller and middleware namespace is set to ```php \app\controllers ``` and ```php \app\middlewares ```
+Default controller and middleware namespace is set to ```\app\controllers``` and ```\app\middlewares``` which can be set when instantiating the main router object
 
 ```php
 require_once __DIR__  . '/vendor/autoload.php';
@@ -44,7 +43,7 @@ $router->post('/post/create', function(\Symfony\Component\HttpFoundation\Request
 $router->dispatch();
 ```
 
-Using middleware
+### Using middleware
 
 Setup up the controller and middleware namespace
 
@@ -58,10 +57,10 @@ $router->get('/admin/blogs', 'TestController@edit', [
 ]);
 ```
 
-Using params in route
+### Using params in route
 
 ```php
-$router->get('/blog/{id}/edit', 'TestController@edit');
+$router->get('/blog/{id}/edit', 'BlogController@edit');
 ```
 
 Then inside controller we can access the id like this
@@ -70,7 +69,7 @@ Then inside controller we can access the id like this
 
 namespace app\controllers;
 
-class TestController
+class BlogController
 {
   public function edit($blog_id)
   {
@@ -79,7 +78,7 @@ class TestController
 }
 ```
 
-Setup 404 page route handler
+### Setup 404 page route handler
 
 ```php
 $router = new \bera\router\Router();
