@@ -130,7 +130,7 @@ class Router
             $endpoint
         );
 
-        $final_endpoint = '#^' . $decorated_string . '$#';
+        $final_endpoint = '#^' . $type . '|' . $decorated_string . '$#';
         $route_handler['params'] = $url_params;
         
         $this->routes[$final_endpoint] = $route_handler;
@@ -218,7 +218,7 @@ class Router
         $callback = '';
         $matched_route = '';
         foreach($this->routes as $route => $route_info) {
-            if(preg_match($route, $endpoint, $matches) && $route_info['type'] == $method) {
+            if(preg_match(str_replace(['GET|', 'POST|'], '', $route), $endpoint, $matches) && $route_info['type'] == $method) {
                 array_shift($matches);
                 $url_params_values = $matches;
                 $callback = $route_info['callback'];
