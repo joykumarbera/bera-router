@@ -77,6 +77,24 @@ class BlogController
   }
 }
 ```
+### Route groups
+
+```php
+$router->group('/admin', [
+    'namespace' => '\\app\\controllers\\admin\\',
+    'middlewares' => [
+        'before' => [
+            'AuthFilterMiddleware'
+        ],
+        'after' => [
+
+        ]
+    ]
+], function($router) {
+    $router->get('/auth/login', 'AuthController@login');
+    $router->post('/auth/logout', 'Auth@logout');
+});
+```
 
 ### Setup 404 page route handler
 

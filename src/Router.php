@@ -38,6 +38,21 @@ class Router
     private $all_option_request_handler;
 
     /**
+     * @var bool $is_group_enable
+     */
+    private $is_group_enable;
+
+    /**
+     * @var array $route_group_config
+     */
+    private $route_group_config;
+
+    /**
+     * @var string $route_group_endpoint_prefix
+     */
+    private $route_group_endpoint_prefix;
+
+    /**
      * Constructor
      * 
      * @param string $controller_namespace
@@ -49,6 +64,9 @@ class Router
         $this->controller_namespace = $controller_namespace ?? '\\app\\controllers\\';
         $this->middleware_namespace = $middleware_namespace ?? '\\app\\middlewares\\';
         $this->not_found404_handler = null;
+        $this->is_group_enable = false;
+        $this->route_group_config = [];
+        $this->route_group_endpoint_prefix = '';
     }
 
     /**
@@ -76,10 +94,43 @@ class Router
      * 
      * @param string $endpoint
      * @param callback $callback
+     * @param array $middlewares
+     * @param string $controller_namespace
      */
-    public function get(string $endpoint, $callback, array $middlewares = [])
+    public function get(string $endpoint, $callback, array $middlewares = [], string $controller_namespace = '')
     {
-        $this->addRequset('GET', $endpoint, $callback, $middlewares);
+        if($this->is_group_enable) {
+           
+            $endpoint = $this->route_group_endpoint_prefix . $endpoint;
+            if( array_key_exists('middlewares', $this->route_group_config) ) {
+                if( isset($this->route_group_config['middlewares']['before'] ) ) {
+                    if(isset($middlewares['before'])) {
+                        $middlewares['before'] = array_merge(
+                            $this->route_group_config['middlewares']['before'],
+                            $middlewares['before']
+                        );
+                    } else {
+                        $middlewares['before'] = $this->route_group_config['middlewares']['before'];
+                    }
+                }
+
+                if( isset($this->route_group_config['middlewares']['after'] ) ) {
+                    if(isset($middlewares['after'])) {
+                        $middlewares['after'] = array_merge(
+                            $this->route_group_config['middlewares']['after'],
+                            $middlewares['after']
+                        );
+                    } else {
+                        $middlewares['after'] = $this->route_group_config['middlewares']['after'];
+                    }
+                }
+            }
+
+            $controller_namespace = $this->route_group_config['namespace'];
+            $this->addRequset('GET', $endpoint, $callback, $middlewares, $controller_namespace);
+        } else {
+            $this->addRequset('GET', $endpoint, $callback, $middlewares, $controller_namespace);
+        }
     }
 
     /**
@@ -87,10 +138,62 @@ class Router
      * 
      * @param string $endpoint
      * @param callback $callback
+     * @param array $middlewares
+     * @param string $controller_namespace
      */
-    public function post(string $endpoint, $callback, array $middlewares = [])
+    public function post(string $endpoint, $callback, array $middlewares = [], string $controller_namespace = '')
     {
-        $this->addRequset('POST', $endpoint, $callback, $middlewares);
+        if($this->is_group_enable) {
+            $endpoint = $this->route_group_endpoint_prefix . $endpoint;
+            if( array_key_exists('middlewares', $this->route_group_config) ) {
+                if( isset($this->route_group_config['middlewares']['before'] ) ) {
+                    if(isset($middlewares['before'])) {
+                        $middlewares['before'] = array_merge(
+                            $this->route_group_config['middlewares']['before'],
+                            $middlewares['before']
+                        );
+                    } else {
+                        $middlewares['before'] = $this->route_group_config['middlewares']['before'];
+                    }
+                }
+
+                if( isset($this->route_group_config['middlewares']['after'] ) ) {
+                    if(isset($middlewares['after'])) {
+                        $middlewares['after'] = array_merge(
+                            $this->route_group_config['middlewares']['after'],
+                            $middlewares['after']
+                        );
+                    } else {
+                        $middlewares['after'] = $this->route_group_config['middlewares']['after'];
+                    }
+                }
+            }
+            $controller_namespace = $this->route_group_config['namespace'];
+
+            $this->addRequset('POST', $endpoint, $callback, $middlewares, $controller_namespace);
+        } else {
+            $this->addRequset('POST', $endpoint, $callback, $middlewares, $controller_namespace);
+        }
+    }
+
+    /**
+     * Add a route group
+     * 
+     * @param string $endpoint_prefix
+     * @param array $options
+     * @param callable $callback
+     */
+    public function group(string $endpoint_prefix, $options = [], $callback)
+    {
+        $this->is_group_enable = true;
+        $this->route_group_endpoint_prefix = $endpoint_prefix;
+        $this->route_group_config = $options;
+
+        call_user_func($callback, $this);
+
+        $this->is_group_enable = false;
+        $this->route_group_endpoint_prefix = '';
+        $this->route_group_config = [];
     }
 
     /**
@@ -101,11 +204,12 @@ class Router
      * @param callback $callback
      * @param array $middlewares
      */
-    private function addRequset(string $type, string $endpoint, $callback, array $middlewares)
+    private function addRequset(string $type, string $endpoint, $callback, array $middlewares, string $controller_namespace)
     {
         $route_handler = [];
         $route_handler['callback'] = $callback;
         $route_handler['type'] = $type;
+        $route_handler['controller_namespace'] = !empty($controller_namespace) ? $controller_namespace : $this->controller_namespace;
 
         if(array_key_exists('before', $middlewares)) {
             if( !empty($middlewares['before']) ) {
@@ -217,11 +321,13 @@ class Router
         $url_params_values = [];
         $callback = '';
         $matched_route = '';
+        $controller_namespace = '';
         foreach($this->routes as $route => $route_info) {
             if(preg_match(str_replace(['GET|', 'POST|'], '', $route), $endpoint, $matches) && $route_info['type'] == $method) {
                 array_shift($matches);
                 $url_params_values = $matches;
                 $callback = $route_info['callback'];
+                $controller_namespace = $route_info['controller_namespace'];
                 $matched_route = $route;
                 break;
             }
@@ -256,7 +362,7 @@ class Router
         }
 
         if($before_middleware_status) {
-            $this->fireAction($callback, $url_params_values, $request, $response);
+            $this->fireAction($controller_namespace, $callback, $url_params_values, $request, $response);
         }
         
         if(isset($this->routes[$matched_route]['after_middlewares'])) {
@@ -272,11 +378,13 @@ class Router
     /**
      * Call actual action
      * 
+     * @param string $controller_namespace
      * @param string $callback
+     * @param array $url_params_values
      * @param Request $request
      * @param Response $response
      */
-    private function fireAction($callback, $url_params_values, $request, $response) 
+    private function fireAction($controller_namespace, $callback, $url_params_values, $request, $response) 
     {
         $final_params = !empty($url_params_values) ?
             array_merge(array_values($url_params_values), [$request, $response])
@@ -287,7 +395,7 @@ class Router
             call_user_func_array($callback, $final_params);
         } else {
             list($className, $actionName) = explode('@', $callback);
-            $class = $this->controller_namespace . $className;
+            $class = $controller_namespace . $className;
     
             if(!class_exists($class)) {
                 throw new RouteClassNotFoundException(
