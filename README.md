@@ -36,7 +36,7 @@ $router->get('/', function($id) {
     echo 'welcome to index page';
 });
 
-$router->post('/post/create', function(\Symfony\Component\HttpFoundation\Request $request, \Symfony\Component\HttpFoundation\Respone $response) {
+$router->post('/post/create', function(\Symfony\Component\HttpFoundation\Request $request, \Symfony\Component\HttpFoundation\Response $response) {
     // add new post here
 });
 
