@@ -250,12 +250,10 @@ class Router
         $method = $_SERVER['REQUEST_METHOD'];
         $request_uri = $_SERVER['REQUEST_URI'];
 
-        $endpoint = '/';
-
         if(strpos($request_uri, '?') !== false) {
-            $endpoint = $request_uri;
-        } else {
             $endpoint = explode('?', $request_uri)[0];
+        } else {
+            $endpoint = $request_uri;
         }
 
         return [$method, $endpoint];
