@@ -55,10 +55,10 @@ class Router
     /**
      * Constructor
      * 
-     * @param string $controller_namespace
-     * @param string $middleware_namespace
+     * @param string|null $controller_namespace
+     * @param string|null $middleware_namespace
      */
-    public function __construct(string $controller_namespace = null, string $middleware_namespace = null)
+    public function __construct(?string $controller_namespace = null, ?string $middleware_namespace = null)
     {
         $this->routes = [];
         $this->controller_namespace = $controller_namespace ?? '\\app\\controllers\\';
@@ -180,10 +180,10 @@ class Router
      * Add a route group
      * 
      * @param string $endpoint_prefix
-     * @param array $options
      * @param callable $callback
+     * @param array $options
      */
-    public function group(string $endpoint_prefix, $options = [], $callback)
+    public function group(string $endpoint_prefix, callable $callback, $options = [])
     {
         $this->is_group_enable = true;
         $this->route_group_endpoint_prefix = $endpoint_prefix;
@@ -392,24 +392,30 @@ class Router
         if(is_callable($callback)) {
             call_user_func_array($callback, $final_params);
         } else {
-            list($className, $actionName) = explode('@', $callback);
-            $class = $controller_namespace . $className;
-    
-            if(!class_exists($class)) {
-                throw new RouteClassNotFoundException(
-                    sprintf("the class %s not defined", $class)
-                );
-            }
-    
-            $classInstance = new $class();
-    
-            if( !method_exists($classInstance, $actionName) ) {
-                throw new RouteHandlerMethodException(
-                    sprintf("no action method found in %s", get_class($classInstance))
-                );
-            }
+            if(str_contains($callback, '@')) {
+                list($className, $actionName) = explode('@', $callback);
+                $class = $controller_namespace . $className;
+        
+                if(!class_exists($class)) {
+                    throw new RouteClassNotFoundException(
+                        sprintf("the class %s not defined", $class)
+                    );
+                }
+        
+                $classInstance = new $class();
+        
+                if( !method_exists($classInstance, $actionName) ) {
+                    throw new RouteHandlerMethodException(
+                        sprintf("no action method found in %s", get_class($classInstance))
+                    );
+                }
 
-            call_user_func_array([$classInstance, $actionName], $final_params);
+                call_user_func_array([$classInstance, $actionName], $final_params);
+            } else {
+                throw new RouteHandlerMethodException(
+                    "no action method found for the route"
+                );
+            }
         }
     }
 
@@ -428,23 +434,29 @@ class Router
         $middleware_type = $type . '_middlewares';
 
         foreach($this->routes[$endpoint][$middleware_type] as $middleware) {
+            
+            $middleware_status = true;
 
-            $middlewareClass = $this->middleware_namespace . $middleware;
-            $middlewareInstance = new $middlewareClass();
+            if( is_callable($middleware) ) {
+                call_user_func($middleware);
+            } else {
+                $middlewareClass = $this->middleware_namespace . $middleware;
+                $middlewareInstance = new $middlewareClass();
 
-            if(!method_exists($middlewareInstance, 'handle')) {
-                throw new RouteHandlerMethodException(
-                    sprintf("no handle method found in %s", get_class($middlewareInstance))
-                );
-            }
+                if(!method_exists($middlewareInstance, 'handle')) {
+                    throw new RouteHandlerMethodException(
+                        sprintf("no handle method found in %s", get_class($middlewareInstance))
+                    );
+                }
 
-            $middleware_status = call_user_func_array([$middlewareInstance, 'handle'], [
-                $request, $response
-            ]);
+                $middleware_status = call_user_func_array([$middlewareInstance, 'handle'], [
+                    $request, $response
+                ]);
 
-            if($middleware_status !== true) {
-                return false;
-                break;
+                if($middleware_status !== true) {
+                    return false;
+                    break;
+                }
             }
         }
 
