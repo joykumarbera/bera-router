@@ -245,17 +245,25 @@ class Router
      * 
      * @return array
      */
-    private function getRequestMethodAndRoute()
+    private function getRequestMethodAndRoute(): array
     {
         $method = $_SERVER['REQUEST_METHOD'];
         $request_uri = $_SERVER['REQUEST_URI'];
-
-        if(strpos($request_uri, '?') !== false) {
-            $endpoint = explode('?', $request_uri)[0];
-        } else {
-            $endpoint = $request_uri;
+    
+        // Remove query string
+        if (false !== $pos = strpos($request_uri, '?')) {
+            $request_uri = substr($request_uri, 0, $pos);
         }
-
+    
+        // Figure out base path (where index.php lives)
+        $script_name = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME']));
+        if ($script_name !== '/' && strpos($request_uri, $script_name) === 0) {
+            $request_uri = substr($request_uri, strlen($script_name));
+        }
+    
+        // Ensure empty becomes "/"
+        $endpoint = $request_uri ?: '/';
+        
         return [$method, $endpoint];
     }
 
@@ -304,7 +312,7 @@ class Router
      * 
      * @return array
      */
-    public function getRoutes()
+    public function getRoutes(): array
     {
         return $this->routes;
     }
